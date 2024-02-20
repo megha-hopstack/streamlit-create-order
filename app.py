@@ -1,7 +1,6 @@
 import streamlit as st
 import os
 from openai import OpenAI
-from dotenv import load_dotenv, find_dotenv
 from pymongo import MongoClient
 import json
 from bson import ObjectId
@@ -28,7 +27,7 @@ def get_completion_json(prompt, client_instance, model="gpt-3.5-turbo-1106"):
     temperature=1,
     )
     return response.choices[0].message.content
-      
+
 # Function to connect to database
 def database_connection(mongo_url):
     uat = MongoClient(mongo_url)
@@ -39,31 +38,31 @@ def database_connection(mongo_url):
 def display_greeting():
     st.title("Welcome to Our Chat Assistant")
     st.write("What would you like to do today? Here are some things I can help you with:")
-    
+
     # Create three columns for the options
     col1, col2, col3 = st.columns(3)
-    
+
     # Display each option in its own box within a column
     with col1:
         st.container()
         st.write("📦 Create Order")
-    
+
     with col2:
         st.container()
         st.write("📝 Create Product Listing")
-    
+
     with col3:
         st.container()
         st.write("🚚 Create Shipment Plan")
-    
+
     st.write("Please type your request below.")
-    
+
 # Function to check for missing mandatory fields using OpenAI
 def check_mandatory_fields(user_input, client):
     mandatory_fields = [
-        "Warehouse Name/Code", 
-        "Customer Name/Code", 
-        "Product SKU", 
+        "Warehouse Name/Code",
+        "Customer Name/Code",
+        "Product SKU",
         "Quantity"
     ]
     mandatory_fields_str = ", ".join([f"'{field}'" for field in mandatory_fields])
@@ -72,56 +71,56 @@ def check_mandatory_fields(user_input, client):
     prompt = f"""
     The user's input is: "{user_input}"
     The mandatory fields are: {mandatory_fields_str}.
-    
+
     Check if all the mandatory fields are present in the user's input. \
     The name of the fields need not exactly match the user's input. Use your discretion to understand if the given fields and user's inputs match.\
     If any fields are missing, list them. Do not add the fields to this list if they exist in the user input.\
     If all fields are present, respond with "All mandatory fields are present".
     Do not response with anything other than either the missing fields list or "All mandatory fields are present".
     """
-    
+
     response = get_completion(prompt, client)
     return response
 
 #Function to return json from user input
 def json_from_user_input(user_input, client):
     mandatory_fields = [
-        "Warehouse Name/Code", 
-        "Customer Name/Code", 
-        "Product SKU", 
+        "Warehouse Name/Code",
+        "Customer Name/Code",
+        "Product SKU",
         "Quantity"
     ]
     optional_fields = [
         "Order Date",
-        "Order ID", 
+        "Order ID",
         "Carrier",
         "Form Factor",
-        "Insurance Required", 
-        "Product Lot/Batch ID", 
-        "Shipping Address (name)", 
-        "Shipping Address (email)", 
-        "Shipping Address (phone)", 
-        "Shipping Address (line1)", 
-        "Shipping Address (line2)", 
-        "Shipping Address (city)", 
-        "Shipping Address (state)", 
-        "Shipping Address (country)", 
+        "Insurance Required",
+        "Product Lot/Batch ID",
+        "Shipping Address (name)",
+        "Shipping Address (email)",
+        "Shipping Address (phone)",
+        "Shipping Address (line1)",
+        "Shipping Address (line2)",
+        "Shipping Address (city)",
+        "Shipping Address (state)",
+        "Shipping Address (country)",
         "Shipping Address (zip)",
         "Validate Address"
     ]
-    
+
     prompt = f"""
     The user's input is: "{user_input}"
     The mandatory fields are: {mandatory_fields}.
     The optional fields are: {optional_fields}.
-    
+
     Return a JSON object where keys are all the fields in {mandatory_fields} and {optional_fields}. Extract the respective values from the user input.
-    For example: if user writes warehouse 554, then the dictionary should contain key as "Warehouse Name/Code" and value as "554". 
-    The name of the fields need not exactly match the user's input. Use your discretion to understand which part of the user's input refers to which key. 
+    For example: if user writes warehouse 554, then the dictionary should contain key as "Warehouse Name/Code" and value as "554".
+    The name of the fields need not exactly match the user's input. Use your discretion to understand which part of the user's input refers to which key.
     For insurance required or validate address the key should be 'yes', 'no' or left blank if not input by user.
-    For any optional field leave the value blank if it is not input by the user, but do not leave the keys blank. 
+    For any optional field leave the value blank if it is not input by the user, but do not leave the keys blank.
     """
-    
+
     response = get_completion_json(prompt, client)
     response_dict = json.loads(response)  # Convert the JSON string to a Python dictionary
     return response_dict
@@ -142,8 +141,8 @@ def validate_customer(customer_code, database):
 
 
 def validate_order_date(order_date, client):
-    prompt = f""" Is {order_date} a valid date? If not, respond with "Date not valid". 
-    If yes, convert it to epoch time and return the epoch time only. Assume the timezone is UTC. 
+    prompt = f""" Is {order_date} a valid date? If not, respond with "Date not valid".
+    If yes, convert it to epoch time and return the epoch time only. Assume the timezone is UTC.
     Do not respond with anything other than either the epoch time or "Date not valid".
     """
     response = get_completion(prompt, client)
@@ -177,7 +176,7 @@ def validate_form_factor(form_factor):
     else:
         return "Form factor not valid"
 
-    
+
 def validate_insurance_required(insurance_required):
     if not insurance_required:  # Checks for None or empty string
         return False
@@ -194,7 +193,7 @@ def validate_address(validate_address):
     else:
         return "Validate address not valid"
 
-    
+
 def validate_carrier(carrier):
     valid_carriers = {"ups": "UPS", "usps": "USPS", "fedex": "FedEx"}
     if not carrier:  # Checks for None or empty string
@@ -204,10 +203,10 @@ def validate_carrier(carrier):
     else:
         return "Carrier not valid"
 
-    
+
 def validate_fields(order, client, mongo_url):
     database = database_connection(mongo_url)
-    validated_order = order.copy()  
+    validated_order = order.copy()
 
 
     # Validate warehouse
@@ -240,7 +239,7 @@ def validate_fields(order, client, mongo_url):
     sku_id, matched_warehouse_id, matched_customer_id = validate_product_sku(warehouse_ids, customer_ids, order["Product SKU"], database)
     if sku_id == "SKU not valid":
         return sku_id, None
-    
+
     validated_order["Warehouse ID"] = matched_warehouse_id
     validated_order["Customer ID"] = matched_customer_id
     validated_order["Product SKU ID"] = sku_id
@@ -267,11 +266,11 @@ def validate_fields(order, client, mongo_url):
     validate_address_result = validate_address(order.get("Validate Address"))
     if validate_address_result == "Validate address not valid":
         return validate_address_result, None
-    
+
     validated_order["Validate Address"] = validate_address_result
     return "Yes", validated_order
 
-    
+
 def create_order_data(validated_order, client, mongo_url):
     database = database_connection(mongo_url)
     sku_id = validated_order["Product SKU ID"]
@@ -294,7 +293,7 @@ def create_order_data(validated_order, client, mongo_url):
         form_factor = validated_order.get("formFactor")
     except:
         form_factor = sku_bin_mapping.get("formFactor", "")
-        
+
     order_data = {
         "warehouse": validated_order["Warehouse ID"],
         "customer": validated_order["Customer ID"],
@@ -332,7 +331,7 @@ def create_order_data(validated_order, client, mongo_url):
         "orderDate": validated_order.get("Order Date"),  # Current time in milliseconds
         "orderType": "Hopstack"
     }
-    
+
     return order_data
 
 def login(url, username, password, logout_all=True):
@@ -418,8 +417,8 @@ def save_order(url, token, order_data):
 
 def create_order(client, mongo_url, url, email, password):
     st.write("Sure, I can help you with that. Please input the following details or upload an Excel file.")
-    
-    # Using columns to separate mandatory and optional fields 
+
+    # Using columns to separate mandatory and optional fields
     col1, col2 = st.columns([1, 1.5])
 
     with col1:
@@ -444,7 +443,7 @@ def create_order(client, mongo_url, url, email, password):
         - ✅ Validate Address
         """, unsafe_allow_html=True)
 
-    
+
     # Expander for text input details
     with st.expander("Enter Order Details Here:"):
         order_details = st.text_area("Fill in the details for the mandatory fields and any optional fields you wish to include.")
@@ -453,7 +452,7 @@ def create_order(client, mongo_url, url, email, password):
             missing_fields_response = check_mandatory_fields(order_details, client)
             if "All mandatory fields are present" in missing_fields_response:
                 order = json_from_user_input(order_details, client)
-                validate, validated_order = validate_fields(order, client, mongo_url)                
+                validate, validated_order = validate_fields(order, client, mongo_url)
                 if validate == "Yes":
                     order_data = create_order_data(validated_order, client, mongo_url)
                     token = login(url, email, password, logout_all=True)
@@ -470,7 +469,7 @@ def create_order(client, mongo_url, url, email, password):
                         st.error("An unknown error occurred")
                 else:
                     st.error(f"{validate}")
-                    
+
             else:
                 st.error(f"{missing_fields_response}")
 
@@ -485,21 +484,21 @@ def create_order(client, mongo_url, url, email, password):
 
 
 def process_user_input(user_input, client, mongo_url, url, email, password):
-    
+
     prompt = f"""
-    You will be provided with the user's text delimited by triple quotes. 
+    You will be provided with the user's text delimited by triple quotes.
     If the user wants to create an order, write "Create order".
-    
+
     If the user wants to create a product listing or shipment plan, \
     write "This feature is coming soon".
-    
+
     If it contains anything other than creation of order, product or shipment, \
      return "I'm sorry, I can't help with that".
-    
+
     \"\"\"{user_input}\"\"\"
     """
     response = get_completion(prompt, client)
-    
+
     if response == "Create order":
         create_order(client, mongo_url, url, email, password)
 
@@ -511,7 +510,7 @@ def process_user_input(user_input, client, mongo_url, url, email, password):
             create_order(client, mongo_url, url, email, password)
         elif continue_response.lower() == 'no':
             st.write("Thank you! If you need further assistance, just ask.")
-            
+
 # Main app logic
 def main():
 
@@ -519,14 +518,14 @@ def main():
         # This is the default and can be omitted
         api_key=st.secrets("OPENAI_API_KEY"),
     )
-    
+
     mongo_url = st.secrets("UAT")
     email = st.secrets("email")
     password = st.secrets("password")
     url = st.secrets("url")
 
     display_greeting()
-    
+
     user_input = st.text_input("Your response:")
 
     if user_input:
