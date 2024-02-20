@@ -225,9 +225,9 @@ def validate_fields(order, client, mongo_url):
         order_date_epoch = validate_order_date(order_date, client)
         if order_date_epoch == "Date not valid":
             return order_date_epoch, None
-        validated_order["Order Date"] = order_date_epoch
+        validated_order["Order Date"] = order_date_epoch * 1000
     else:
-        validated_order["Order Date"] = int(time.time())
+        validated_order["Order Date"] = int(time.time()) * 1000
 
     # Validate quantity
     quantity = validate_quantity(order["Quantity"], client)
