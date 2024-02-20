@@ -516,13 +516,13 @@ def main():
 
     client = OpenAI(
         # This is the default and can be omitted
-        api_key=st.secrets("OPENAI_API_KEY"),
+        api_key=st.secrets["OPENAI_API_KEY"],
     )
 
-    mongo_url = st.secrets("UAT")
-    email = st.secrets("email")
-    password = st.secrets("password")
-    url = st.secrets("url")
+    mongo_url = st.secrets["UAT"]
+    email = st.secrets["email"]
+    password = st.secrets["password"]
+    url = st.secrets["url"]
 
     display_greeting()
 
