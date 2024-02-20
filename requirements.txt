@@ -1,0 +1,3 @@
+openai
+pysqlite3-binary
+pymongo
