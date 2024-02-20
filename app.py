@@ -514,17 +514,16 @@ def process_user_input(user_input, client, mongo_url, url, email, password):
             
 # Main app logic
 def main():
-    _ = load_dotenv(find_dotenv()) # read local .env file
 
     client = OpenAI(
         # This is the default and can be omitted
-        api_key=os.environ.get("OPENAI_API_KEY"),
+        api_key=st.secrets("OPENAI_API_KEY"),
     )
     
-    mongo_url = os.environ.get("UAT")
-    email = os.environ.get("email")
-    password = os.environ.get("password")
-    url = os.environ.get("url")
+    mongo_url = st.secrets("UAT")
+    email = st.secrets("email")
+    password = st.secrets("password")
+    url = st.secrets("url")
 
     display_greeting()
     
