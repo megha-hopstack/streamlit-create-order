@@ -7,7 +7,7 @@ from bson import ObjectId
 import requests
 import time
 
-def get_completion(prompt, client_instance, model="gpt-3.5-turbo-1106"):
+def get_completion(prompt, client_instance, model="gpt-4-0125-preview"):
     messages = [{"role": "user", "content": prompt}]
     response = client_instance.chat.completions.create(
     model=model,
@@ -17,7 +17,7 @@ def get_completion(prompt, client_instance, model="gpt-3.5-turbo-1106"):
     )
     return response.choices[0].message.content
 
-def get_completion_json(prompt, client_instance, model="gpt-3.5-turbo-1106"):
+def get_completion_json(prompt, client_instance, model="gpt-4-0125-preview"):
     messages = [{"role": "user", "content": prompt}]
     response = client_instance.chat.completions.create(
     model=model,
@@ -72,11 +72,11 @@ def check_mandatory_fields(user_input, client):
     The user's input is: "{user_input}"
     The mandatory fields are: {mandatory_fields_str}.
 
-    Check if all the mandatory fields are present in the user's input. \
+    Check if all the specified mandatory fields are present in the user's input. \
     The name of the fields need not exactly match the user's input. Use your discretion to understand if the given fields and user's inputs match.\
-    If any fields are missing, list them. Do not add the fields to this list if they exist in the user input.\
-    If all fields are present, respond with "All mandatory fields are present".
-    Do not response with anything other than either the missing fields list or "All mandatory fields are present".
+    If any of the specified mandatory fields are missing, list them. Do not add any other fields to this list, even if they are mentioned in the user input.\
+    If all specified mandatory fields are present, respond with "All mandatory fields are present".
+    Do not respond with anything other than either the missing fields list or "All mandatory fields are present".
     """
 
     response = get_completion(prompt, client)
@@ -141,8 +141,8 @@ def validate_customer(customer_code, database):
 
 
 def validate_order_date(order_date, client):
-    prompt = f""" Is {order_date} a valid date? If not, respond with "Date not valid".
-    If yes, convert it to epoch time and return the epoch time only. Assume the timezone is UTC.
+    prompt = f"""Is '{order_date}' a valid date? If not, respond with "Date not valid".
+    If yes, convert it to epoch time in milliseconds and return the epoch time only. Assume the timezone is UTC.
     Do not respond with anything other than either the epoch time or "Date not valid".
     """
     response = get_completion(prompt, client)
@@ -219,15 +219,15 @@ def validate_fields(order, client, mongo_url):
     if customer_ids == "Customer name/code not valid":
         return customer_ids, None
 
-    # Validate order date
+    #Validate order date
     order_date = order.get("Order Date", "")
     if order_date:
         order_date_epoch = validate_order_date(order_date, client)
         if order_date_epoch == "Date not valid":
             return order_date_epoch, None
-        validated_order["Order Date"] = order_date_epoch * 1000
+        validated_order["Order Date"] = order_date_epoch
     else:
-        validated_order["Order Date"] = int(time.time()) * 1000
+        validated_order["Order Date"] = int(time.time() * 1000)  # Current time in milliseconds
 
     # Validate quantity
     quantity = validate_quantity(order["Quantity"], client)
