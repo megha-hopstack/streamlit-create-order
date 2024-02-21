@@ -329,7 +329,7 @@ def create_order_data(validated_order, client, mongo_url):
         "carrier": validated_order.get("Carrier"),
         "insuranceRequired": validated_order.get("Insurance Required"),
         "orderDate": validated_order.get("Order Date"),  # Current time in milliseconds
-        "orderType": "Hopstack"
+        "source": "Hopstack"
     }
 
     return order_data
@@ -373,7 +373,7 @@ def save_order(url, token, order_data):
     $orderDate: Date
     $workflowType: String
     $shippingAddress: ShippingAddressInput
-    $orderType: String
+    $source: String
     $carrierService: String
     $insuranceRequired: Boolean
     $insuranceProvider: String
@@ -395,7 +395,7 @@ def save_order(url, token, order_data):
         orderDate: $orderDate
         workflowType: $workflowType
         shippingAddress: $shippingAddress
-        orderType: $orderType
+        source: $source
         carrierService: $carrierService
         insuranceRequired: $insuranceRequired
         insuranceProvider: $insuranceProvider
