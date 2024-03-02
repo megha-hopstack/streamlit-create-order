@@ -1,11 +1,13 @@
 import streamlit as st
 import os
 from openai import OpenAI
+from dotenv import load_dotenv, find_dotenv
 from pymongo import MongoClient
 import json
 from bson import ObjectId
 import requests
 import time
+import pandas as pd
 
 def get_completion(prompt, client_instance, model="gpt-4-0125-preview"):
     messages = [{"role": "user", "content": prompt}]
@@ -34,28 +36,46 @@ def database_connection(mongo_url):
     database = uat["platform-uat"]
     return database
 
-# Function to display the initial greeting and options
-def display_greeting():
+def check_tenant_name(tenant_name, database):
+    result = database.tenants.find_one({"name": tenant_name, "subdomain": "uat"}, {"_id": 1})
+    if result:
+        return str(result['_id'])
+    return "Tenant name not valid"
+
+def display_greeting(database):
     st.title("Welcome to Our Chat Assistant")
-    st.write("What would you like to do today? Here are some things I can help you with:")
 
-    # Create three columns for the options
-    col1, col2, col3 = st.columns(3)
+    with st.expander("Enter Tenant Name:"):
+        tenant_name = st.text_input("Please enter the tenant name:", key="tenant_name_input")
+        if tenant_name:
+            tenant_id = check_tenant_name(tenant_name, database)
+            if tenant_id != "Tenant name not valid":
+                st.session_state['tenant_id'] = tenant_id
+                st.session_state['tenant_name'] = tenant_name
+                st.write(f"What would you like to do today, {tenant_name}? Here are some things I can help you with:")
+                
+                # Create three columns for the options
+                col1, col2, col3 = st.columns(3)
 
-    # Display each option in its own box within a column
-    with col1:
-        st.container()
-        st.write("📦 Create Order")
+                # Display each option in its own box within a column
+                with col1:
+                    st.container()
+                    st.write("📦 Create Order")
 
-    with col2:
-        st.container()
-        st.write("📝 Create Product Listing")
+                with col2:
+                    st.container()
+                    st.write("📝 Create Product Listing")
 
-    with col3:
-        st.container()
-        st.write("🚚 Create Shipment Plan")
+                with col3:
+                    st.container()
+                    st.write("🚚 Create Shipment Plan")
 
-    st.write("Please type your request below.")
+                st.write("Please type your request below.")
+            else:
+                st.error("Tenant name not valid. Please try again.")
+
+    return st.session_state.get('tenant_id'), st.session_state.get('tenant_name')
+
 
 # Function to check for missing mandatory fields using OpenAI
 def check_mandatory_fields(user_input, client):
@@ -74,7 +94,7 @@ def check_mandatory_fields(user_input, client):
 
     Check if all the specified mandatory fields are present in the user's input. \
     The name of the fields need not exactly match the user's input. Use your discretion to understand if the given fields and user's inputs match.\
-    If any of the specified mandatory fields are missing, list them. Do not add any other fields to this list, even if they are mentioned in the user input.\
+    If any of the specified mandatory fields are missing, return "Mandatory fields missing: " followed by the list of missing fields. \
     If all specified mandatory fields are present, respond with "All mandatory fields are present".
     Do not respond with anything other than either the missing fields list or "All mandatory fields are present".
     """
@@ -125,24 +145,43 @@ def json_from_user_input(user_input, client):
     response_dict = json.loads(response)  # Convert the JSON string to a Python dictionary
     return response_dict
 
-def validate_warehouse(warehouse_code, database):
-    results = database.warehouses.find({"$or": [{"name": warehouse_code}, {"code": warehouse_code}]}, {"_id": 1})
-    warehouse_ids = [str(result['_id']) for result in results]
-    if warehouse_ids:
-        return warehouse_ids
-    return "Warehouse name/code not valid"
+def validate_warehouse(warehouse_code, database, tenant_id):
+    result = database.warehouses.find_one(
+        {"tenant": tenant_id, "$or": [{"name": warehouse_code}, {"code": warehouse_code}]},
+        {"_id": 1}
+    )
+    if result:
+        return str(result['_id'])
+    else:
+        return "Warehouse name/code not valid"
 
-def validate_customer(customer_code, database):
-    results = database.customers.find({"$or": [{"name": customer_code}, {"code": customer_code}]}, {"_id": 1})
-    customer_ids = [str(result['_id']) for result in results]
-    if customer_ids:
-        return customer_ids
-    return "Customer name/code not valid"
+def validate_customer(customer_code, database, tenant_id):
+    result = database.customers.find_one(
+        {"tenant": tenant_id, "$or": [{"name": customer_code}, {"code": customer_code}]},
+        {"_id": 1}
+    )
+    if result:
+        return str(result['_id'])
+    else:
+        return "Customer name/code not valid"
+
+def validate_customer_warehouse_access(customer_id, warehouse_id, database):
+    # Convert warehouse_id to ObjectId
+    warehouse_id = ObjectId(warehouse_id)
+
+    # Retrieve the customer document
+    customer = database.customers.find_one({"_id": ObjectId(customer_id)}, {"warehouses": 1})
+    
+    # Check if the customer has access to all warehouses or the specific warehouse
+    if customer.get("warehouses") is None or str(warehouse_id) in customer.get("warehouses", []):
+        return True
+    else:
+        return "Warehouse not valid for this customer"
 
 
 def validate_order_date(order_date, client):
     prompt = f"""Is '{order_date}' a valid date? If not, respond with "Date not valid".
-    If yes, convert it to epoch time in milliseconds and return the epoch time only. Assume the timezone is UTC.
+    If yes, convert it to epoch time in milliseconds and return that. Assume the timezone is UTC.
     Do not respond with anything other than either the epoch time or "Date not valid".
     """
     response = get_completion(prompt, client)
@@ -152,20 +191,18 @@ def validate_quantity(quantity, client):
     prompt = f"""Is '{quantity}' a valid positive number or a word representing a positive number? If not, respond with "Quantity not valid".
             If it is an integer, simply return that. If it is a word representing a positive number, return the integer it respresents. Don't respond with anything else."""
     response = get_completion(prompt, client)
-    return int(response)
+    return response
 
-def validate_product_sku(warehouses, customers, sku, database):
-    # Find the product variant that matches the SKU and any of the given warehouses and customers
+def validate_product_sku(customer, sku, database, tenant_id):
+    # Find the product variant that matches the SKU, customer, and tenant
     result = database.productvariants.find_one(
-        {"warehouse": {"$in": warehouses}, "customer": {"$in": customers}, "sku": sku},
-        {"_id": 1, "warehouse": 1, "customer": 1}
+        {"tenant": tenant_id, "customer": customer, "sku": sku},
+        {"_id": 1}
     )
-    print(result)
     if result:
-        # Return the matched SKU ID, warehouse ID, and customer ID
-        return str(result['_id']), result['warehouse'], result['customer']
-    return "SKU not valid", None, None
-
+        return str(result['_id'])
+    else:
+        return "SKU not valid"
 
 def validate_form_factor(form_factor):
     valid_form_factors = ["each", "case", "carton", "pallet"]
@@ -204,20 +241,23 @@ def validate_carrier(carrier):
         return "Carrier not valid"
 
 
-def validate_fields(order, client, mongo_url):
-    database = database_connection(mongo_url)
+def validate_fields(order, client, database, tenant_id):
+    print(order)
     validated_order = order.copy()
 
+    # Validate customer
+    customer_id = validate_customer(order["Customer Name/Code"], database, tenant_id)
+    if customer_id == "Customer name/code not valid":
+        return customer_id, None
 
     # Validate warehouse
-    warehouse_ids = validate_warehouse(order["Warehouse Name/Code"], database)
-    if warehouse_ids == "Warehouse name/code not valid":
-        return warehouse_ids, None
+    warehouse_id = validate_warehouse(order["Warehouse Name/Code"], database, tenant_id)
+    if warehouse_id == "Warehouse name/code not valid":
+        return warehouse_id, None
 
-    # Validate customer
-    customer_ids = validate_customer(order["Customer Name/Code"], database)
-    if customer_ids == "Customer name/code not valid":
-        return customer_ids, None
+    access_check = validate_customer_warehouse_access(customer_id, warehouse_id, database)
+    if access_check != True:
+        return access_check, None
 
     #Validate order date
     order_date = order.get("Order Date", "")
@@ -225,7 +265,7 @@ def validate_fields(order, client, mongo_url):
         order_date_epoch = validate_order_date(order_date, client)
         if order_date_epoch == "Date not valid":
             return order_date_epoch, None
-        validated_order["Order Date"] = order_date_epoch
+        validated_order["Order Date"] = int(order_date_epoch)
     else:
         validated_order["Order Date"] = int(time.time() * 1000)  # Current time in milliseconds
 
@@ -233,15 +273,16 @@ def validate_fields(order, client, mongo_url):
     quantity = validate_quantity(order["Quantity"], client)
     if quantity == "Quantity not valid":
         return quantity, None
-    validated_order["Quantity"] = quantity
+    validated_order["Quantity"] = int(quantity)
 
     # Validate product SKU
-    sku_id, matched_warehouse_id, matched_customer_id = validate_product_sku(warehouse_ids, customer_ids, order["Product SKU"], database)
+    sku_id = validate_product_sku(customer_id, order["Product SKU"], database, tenant_id)
     if sku_id == "SKU not valid":
         return sku_id, None
-
-    validated_order["Warehouse ID"] = matched_warehouse_id
-    validated_order["Customer ID"] = matched_customer_id
+    
+    # Update the validated_order with the matched warehouse and customer IDs
+    validated_order["Warehouse ID"] = warehouse_id
+    validated_order["Customer ID"] = customer_id
     validated_order["Product SKU ID"] = sku_id
 
     # Validate form factor
@@ -271,8 +312,8 @@ def validate_fields(order, client, mongo_url):
     return "Yes", validated_order
 
 
-def create_order_data(validated_order, client, mongo_url):
-    database = database_connection(mongo_url)
+def create_order_data(validated_order, client, database):
+    
     sku_id = validated_order["Product SKU ID"]
 
     # Query the productvariants collection
@@ -334,9 +375,9 @@ def create_order_data(validated_order, client, mongo_url):
 
     return order_data
 
-def login(url, username, password, logout_all=True):
+def login(url, username, password, tenant_id, tenant_name, logout_all=True):
     headers = {'Content-Type': 'application/json',
-              'tenant': '{"id":"62cdb0ac6227b7ed224d79aa","name":"Hopstack Inc","subdomain":"hst","code":"hst", "active": true}'
+              'tenant': f'{{"id":"{tenant_id}","name":"{tenant_name}","subdomain":"hst","code":"hst", "active": true}}'
     }
     query = """
     mutation login($username: String!, $password: String!, $logoutAll: Boolean) {
@@ -355,11 +396,11 @@ def login(url, username, password, logout_all=True):
     print(data)
     return data.get('data', {}).get('login', {}).get('token')
 
-def save_order(url, token, order_data):
+def save_order(url, token, order_data, tenant_id, tenant_name):
     headers = {
         'Content-Type': 'application/json',
         'Authorization': f'Bearer {token}',
-        'tenant': '{"id":"62cdb0ac6227b7ed224d79aa","name":"Hopstack Inc","subdomain":"hst","code":"hst", "active": true}'
+        'tenant': f'{{"id":"{tenant_id}","name":"{tenant_name}","subdomain":"hst","code":"hst", "active": true}}'
     }
     query = """
      mutation saveOrder(
@@ -415,7 +456,7 @@ def save_order(url, token, order_data):
     data = response.json()
     return data
 
-def create_order(client, mongo_url, url, email, password):
+def create_order(client, database, url, email, password, tenant_id, tenant_name):
     st.write("Sure, I can help you with that. Please input the following details or upload an Excel file.")
 
     # Using columns to separate mandatory and optional fields
@@ -452,11 +493,11 @@ def create_order(client, mongo_url, url, email, password):
             missing_fields_response = check_mandatory_fields(order_details, client)
             if "All mandatory fields are present" in missing_fields_response:
                 order = json_from_user_input(order_details, client)
-                validate, validated_order = validate_fields(order, client, mongo_url)
+                validate, validated_order = validate_fields(order, client, database, tenant_id)
                 if validate == "Yes":
-                    order_data = create_order_data(validated_order, client, mongo_url)
-                    token = login(url, email, password, logout_all=True)
-                    response = save_order(url, token, order_data)
+                    order_data = create_order_data(validated_order, client, database)
+                    token = login(url, email, password, tenant_id, tenant_name, logout_all=True)
+                    response = save_order(url, token, order_data, tenant_id, tenant_name)
                     print(response)
                     if 'data' in response and response['data']:
                         if any(success_message in response['data'].get('saveOrder', {}).get('message', '') for success_message in ("Order saved successfully", "Order successfully saved")):
@@ -478,12 +519,43 @@ def create_order(client, mongo_url, url, email, password):
     with st.expander("Or Upload an Excel File with Order Details:"):
         excel_file = st.file_uploader("", type=['xlsx'])
         if excel_file:
-            st.success("Excel file uploaded successfully.")
-            # Process Excel file here
+            try:
+                df = pd.read_excel(excel_file)
+                if len(df) > 1:
+                    st.error("Can only create one order at a time.")
+                else:
+                    # Convert the first row of the DataFrame to a string in the format expected by check_mandatory_fields
+                    order_details = ", ".join([f"{k}: {v}" for k, v in df.iloc[0].to_dict().items()])
+                    # Check for missing mandatory fields
+                    missing_fields_response = check_mandatory_fields(order_details, client)
+                    if "All mandatory fields are present" in missing_fields_response:
+                        # Use the json_from_user_input function to create the order dictionary
+                        order = json_from_user_input(order_details, client)
+                        validate, validated_order = validate_fields(order, client, database, tenant_id)
+                        if validate == "Yes":
+                            order_data = create_order_data(validated_order, client, database)
+                            token = login(url, email, password, tenant_id, tenant_name, logout_all=True)
+                            response = save_order(url, token, order_data, tenant_id, tenant_name)
+                            print(response)
+                            if 'data' in response and response['data']:
+                                if any(success_message in response['data'].get('saveOrder', {}).get('message', '') for success_message in ("Order saved successfully", "Order successfully saved")):
+                                    st.success("Order created successfully")
+                                else:
+                                    st.error("Order creation failed")
+                            elif 'errors' in response:
+                                st.error(f"{response['errors']}")
+                            else:
+                                st.error("An unknown error occurred")
+                        else:
+                            st.error(f"{validate}")
+                    else:
+                        st.error(f"{missing_fields_response}")
+            except Exception as e:
+                st.error("Cannot read excel: " + str(e))
 
 
 
-def process_user_input(user_input, client, mongo_url, url, email, password):
+def process_user_input(user_input, client, database, url, email, password, tenant_id, tenant_name):
 
     prompt = f"""
     You will be provided with the user's text delimited by triple quotes.
@@ -500,16 +572,17 @@ def process_user_input(user_input, client, mongo_url, url, email, password):
     response = get_completion(prompt, client)
 
     if response == "Create order":
-        create_order(client, mongo_url, url, email, password)
+        create_order(client, database, url, email, password, tenant_id, tenant_name)
 
     else:
         st.write(response)
         continue_response = st.text_input("If you want to continue with creating an order, type 'yes' otherwise 'no' to end this chat.")
 
         if continue_response.lower() == 'yes':
-            create_order(client, mongo_url, url, email, password)
+            create_order(client, database, url, email, password, tenant_id, tenant_name)
         elif continue_response.lower() == 'no':
             st.write("Thank you! If you need further assistance, just ask.")
+
 
 # Main app logic
 def main():
@@ -524,12 +597,14 @@ def main():
     password = st.secrets["password"]
     url = st.secrets["url"]
 
-    display_greeting()
+    database = database_connection(mongo_url)
+    tenant_id, tenant_name = display_greeting(database)
+    
+    if tenant_id and tenant_name:
+        user_input = st.text_input("Your response:")
+        if user_input:
+            process_user_input(user_input, client, database, url, email, password, tenant_id, tenant_name)
 
-    user_input = st.text_input("Your response:")
-
-    if user_input:
-        process_user_input(user_input, client, mongo_url, url, email, password)
 
 if __name__ == "__main__":
     main()
