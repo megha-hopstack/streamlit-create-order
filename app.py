@@ -1,7 +1,6 @@
 import streamlit as st
 import os
 from openai import OpenAI
-from dotenv import load_dotenv, find_dotenv
 from pymongo import MongoClient
 import json
 from bson import ObjectId
