@@ -376,7 +376,7 @@ def create_order_data(validated_order, client, database):
 
 def login(url, username, password, tenant_id, tenant_name, logout_all=True):
     headers = {'Content-Type': 'application/json',
-              'tenant': f'{{"id":"{tenant_id}","name":"{tenant_name}","subdomain":"hst","code":"hst", "active": true}}'
+              'tenant': f'{{"id":"{tenant_id}","name":"{tenant_name}","subdomain":"uat","code":"uat", "active": true}}'
     }
     query = """
     mutation login($username: String!, $password: String!, $logoutAll: Boolean) {
@@ -399,7 +399,7 @@ def save_order(url, token, order_data, tenant_id, tenant_name):
     headers = {
         'Content-Type': 'application/json',
         'Authorization': f'Bearer {token}',
-        'tenant': f'{{"id":"{tenant_id}","name":"{tenant_name}","subdomain":"hst","code":"hst", "active": true}}'
+        'tenant': f'{{"id":"{tenant_id}","name":"{tenant_name}","subdomain":"uat","code":"uat", "active": true}}'
     }
     query = """
      mutation saveOrder(
