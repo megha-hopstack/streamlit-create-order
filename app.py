@@ -483,36 +483,54 @@ def create_order(client, database, url, email, password, tenant_id, tenant_name)
         - ✅ Validate Address
         """, unsafe_allow_html=True)
 
-
     # Expander for text input details
     with st.expander("Enter Order Details Here:"):
-        order_details = st.text_area("Fill in the details for the mandatory fields and any optional fields you wish to include.")
-        if order_details:
-            # Check for missing mandatory fields
-            missing_fields_response = check_mandatory_fields(order_details, client)
-            if "All mandatory fields are present" in missing_fields_response:
-                order = json_from_user_input(order_details, client)
-                validate, validated_order = validate_fields(order, client, database, tenant_id)
-                if validate == "Yes":
-                    order_data = create_order_data(validated_order, client, database)
-                    token = login(url, email, password, tenant_id, tenant_name, logout_all=True)
-                    response = save_order(url, token, order_data, tenant_id, tenant_name)
-                    print(response)
-                    if 'data' in response and response['data']:
-                        if any(success_message in response['data'].get('saveOrder', {}).get('message', '') for success_message in ("Order saved successfully", "Order successfully saved")):
-                            st.success("Order created successfully")
-                        else:
-                            st.error("Order creation failed")
-                    elif 'errors' in response:
-                        st.error(f"{response['errors']}")
+        order_input = st.text_area("Enter order details here:")
+        if st.button("Add Order"):
+            if order_input.strip():
+                missing_fields_response = check_mandatory_fields(order_input, client)
+                if "All mandatory fields are present" in missing_fields_response:
+                    order_data = json_from_user_input(order_input, client)
+                    validate, validated_order = validate_fields(order_data, client, database, tenant_id)
+                    if validate == "Yes":
+                        if 'orders' not in st.session_state:
+                            st.session_state.orders = []
+                        st.session_state.orders.append(validated_order)
+                        st.success("Order added. Add another or submit all orders.")
                     else:
-                        st.error("An unknown error occurred")
+                        st.error(f"Validation failed: {validate}")
                 else:
-                    st.error(f"{validate}")
+                    st.error(f"Missing mandatory fields: {missing_fields_response}")
 
-            else:
-                st.error(f"{missing_fields_response}")
+    # Display list of orders
+    st.markdown("### Orders to be Submitted")
+    if 'orders' in st.session_state and st.session_state.orders:
+        with st.expander(f"View {len(st.session_state.orders)} Orders to be Submitted"):
+            for i, order in enumerate(st.session_state.orders, 1):
+                st.write(f"**Order {i}:**")
+                st.json(order)
 
+        # Final Submit Button
+        if st.button("Submit All Orders"):
+            token = login(url, email, password, tenant_id, tenant_name)
+            progress_bar = st.progress(0)
+            total_orders = len(st.session_state.orders)
+            for i, order in enumerate(st.session_state.orders, 1):
+                order_payload = create_order_data(order, client, database)
+                response = save_order(url, token, order_payload, tenant_id, tenant_name)
+                if 'data' in response and response['data']:
+                    if any(success_message in response['data'].get('saveOrder', {}).get('message', '') for success_message in ("Order saved successfully", "Order successfully saved")):
+                        st.toast(f"Order {i} created successfully", icon="✅")
+                    else:
+                        st.toast(f"Order {i} creation failed: {response['data'].get('saveOrder', {}).get('message', 'Unknown error')}", icon="❌")
+                elif 'errors' in response:
+                    st.toast(f"Order {i} errors: {response['errors']}", icon="❌")
+                else:
+                    st.toast(f"An unknown error occurred with Order {i}", icon="❌")
+                progress_bar.progress(i / total_orders)
+            st.session_state.orders = []  # Clear orders after submission
+    else:
+        st.write("No orders added yet.")
 
     # Button for uploading Excel within an expander for better organization
     with st.expander("Or Upload an Excel File with Order Details:"):
@@ -520,35 +538,22 @@ def create_order(client, database, url, email, password, tenant_id, tenant_name)
         if excel_file:
             try:
                 df = pd.read_excel(excel_file)
-                if len(df) > 1:
-                    st.error("Can only create one order at a time.")
-                else:
-                    # Convert the first row of the DataFrame to a string in the format expected by check_mandatory_fields
-                    order_details = ", ".join([f"{k}: {v}" for k, v in df.iloc[0].to_dict().items()])
+                for index, row in df.iterrows():
+                    order_details = ", ".join([f"{k}: {v}" for k, v in row.to_dict().items()])
                     # Check for missing mandatory fields
                     missing_fields_response = check_mandatory_fields(order_details, client)
                     if "All mandatory fields are present" in missing_fields_response:
-                        # Use the json_from_user_input function to create the order dictionary
                         order = json_from_user_input(order_details, client)
                         validate, validated_order = validate_fields(order, client, database, tenant_id)
                         if validate == "Yes":
-                            order_data = create_order_data(validated_order, client, database)
-                            token = login(url, email, password, tenant_id, tenant_name, logout_all=True)
-                            response = save_order(url, token, order_data, tenant_id, tenant_name)
-                            print(response)
-                            if 'data' in response and response['data']:
-                                if any(success_message in response['data'].get('saveOrder', {}).get('message', '') for success_message in ("Order saved successfully", "Order successfully saved")):
-                                    st.success("Order created successfully")
-                                else:
-                                    st.error("Order creation failed")
-                            elif 'errors' in response:
-                                st.error(f"{response['errors']}")
-                            else:
-                                st.error("An unknown error occurred")
+                            if 'orders' not in st.session_state:
+                                st.session_state.orders = []
+                            st.session_state.orders.append(validated_order)
+                            st.success(f"Order from row {index+1} added.")
                         else:
-                            st.error(f"{validate}")
+                            st.error(f"Validation failed for row {index+1}: {validate}")
                     else:
-                        st.error(f"{missing_fields_response}")
+                        st.error(f"Missing mandatory fields for row {index+1}: {missing_fields_response}")
             except Exception as e:
                 st.error("Cannot read excel: " + str(e))
 
