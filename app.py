@@ -184,8 +184,20 @@ def validate_order_date(order_date, client):
     Do not respond with anything other than either the epoch time or "Date not valid".
     """
     response = get_completion(prompt, client)
-    return response
-
+    
+    # Check if the response is a valid epoch time
+    try:
+        epoch_time = int(response)
+        # Get the current time in epoch milliseconds
+        current_time = int(time.time() * 1000)
+        
+        # Check if the provided date is in the future
+        if epoch_time > current_time:
+            return "Date not valid: Future dates are not allowed."
+        
+        return epoch_time
+    except ValueError:
+        return response
 def validate_quantity(quantity, client):
     prompt = f"""Is '{quantity}' a valid positive number or a word representing a positive number? If not, respond with "Quantity not valid".
             If it is an integer, simply return that. If it is a word representing a positive number, return the integer it respresents. Don't respond with anything else."""
