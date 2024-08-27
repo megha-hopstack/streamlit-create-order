@@ -541,14 +541,18 @@ def create_order(client, database, url, email, password, tenant_id, tenant_name)
     else:
         st.write("No orders added yet.")
 
-    # Button for uploading Excel within an expander for better organization
-    with st.expander("Or Upload an Excel File with Order Details:"):
-        excel_file = st.file_uploader("", type=['xlsx'])
-        if excel_file:
+    # Button for uploading CSV within an expander for better organization
+    with st.expander("Or Upload a CSV File with Order Details:"):
+        csv_file = st.file_uploader("", type=['csv'])
+        if csv_file:
             try:
-                df = pd.read_excel(excel_file)
+                df = pd.read_csv(csv_file)
+
                 for index, row in df.iterrows():
-                    order_details = ", ".join([f"{k}: {v}" for k, v in row.to_dict().items()])
+                    # Convert row to dictionary and prepare order details string
+                    row_dict = row.to_dict()
+                    order_details = ", ".join([f"{k}: {v}" for k, v in row_dict.items() if pd.notna(v)])
+
                     # Check for missing mandatory fields
                     missing_fields_response = check_mandatory_fields(order_details, client)
                     if "All mandatory fields are present" in missing_fields_response:
@@ -564,7 +568,7 @@ def create_order(client, database, url, email, password, tenant_id, tenant_name)
                     else:
                         st.error(f"Missing mandatory fields for row {index+1}: {missing_fields_response}")
             except Exception as e:
-                st.error("Cannot read excel: " + str(e))
+                st.error("Cannot read CSV: " + str(e))
 
 
 
