@@ -465,7 +465,7 @@ def save_order(url, token, order_data, tenant_id, tenant_name):
     return data
 
 def create_order(client, database, url, email, password, tenant_id, tenant_name):
-    st.write("Sure, I can help you with that. Please input the following details or upload an Excel file.")
+    st.write("Sure, I can help you with that. Please input the following details or upload a CSV file.")
 
     # Using columns to separate mandatory and optional fields
     col1, col2 = st.columns([1, 1.5])
