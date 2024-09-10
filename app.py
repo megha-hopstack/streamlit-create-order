@@ -509,24 +509,24 @@ def create_order_data(validated_order, client, database):
 
     return order_data
 
- def validate_consignment_fields(consignment, client, database, tenant_id):
+def validate_consignment_fields(consignment, client, database, tenant_id):
     print(consignment)
     validated_consignment = consignment.copy()
-
+    
     # Validate customer
     customer_id = validate_customer(consignment["Customer Name/Code"], database, tenant_id)
     if customer_id == "Customer name/code not valid":
         return customer_id, None
-
+    
     # Validate warehouse
     warehouse_id = validate_warehouse(consignment["Warehouse Name/Code"], database, tenant_id)
     if warehouse_id == "Warehouse name/code not valid":
         return warehouse_id, None
-
+    
     access_check = validate_customer_warehouse_access(customer_id, warehouse_id, database)
     if access_check != True:
         return access_check, None
-
+    
     # Validate consignment date
     consignment_date = consignment.get("Consignment Date", "")
     if consignment_date:
@@ -536,31 +536,31 @@ def create_order_data(validated_order, client, database):
         validated_consignment["Consignment Date"] = consignment_date_epoch
     else:
         validated_consignment["Consignment Date"] = int(time.time() * 1000)  # Current time in milliseconds
-
+    
     # Validate quantity
     quantity = validate_quantity(consignment["Quantity"], client)
     if quantity == "Quantity not valid":
         return quantity, None
     validated_consignment["Quantity"] = quantity
-
+    
     # Validate product SKU
     sku_id = validate_product_sku(customer_id, consignment["Product SKU"], database, tenant_id)
     if sku_id == "SKU not valid":
         return sku_id, None
-
+    
     # Update the validated_consignment with the matched warehouse and customer IDs
     validated_consignment["Warehouse ID"] = warehouse_id
     validated_consignment["Customer ID"] = customer_id
     validated_consignment["Product SKU ID"] = sku_id
-
+    
     # Validate form factor
     if not consignment["Form Factor"] == '':
         form_factor = validate_form_factor(customer_id, consignment["Product SKU"], database, tenant_id, consignment["Form Factor"])
         if form_factor == "Form factor not valid":
             return form_factor, None
         validated_consignment["Form Factor"] = form_factor
-
-
+    
+    
     # Validate dropship-specific fields (if applicable)
     if consignment.get("Standard/Dropship", "").lower() == "dropship":
         # Validate dropship type and dropship data
@@ -573,16 +573,16 @@ def create_order_data(validated_order, client, database):
             "Label URL": consignment.get("Label URL"),
             "Shipping Address": consignment.get("Shipping Address")
         }
-
+    
         validation_result = validate_and_format_dropship_data(dropship_type, dropship_data)
-
+    
         if "error" in validation_result:
             return validation_result["error"], None
-
+    
         # If valid, add the dropship data to the validated consignment
         validated_consignment["Dropship Type"] = dropship_type
         validated_consignment["Dropship Data"] = validation_result
-
+    
     return "Yes", validated_consignment
 
 def create_consignment_data(validated_consignment, client, database):
