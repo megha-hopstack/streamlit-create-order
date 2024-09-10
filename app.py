@@ -1033,7 +1033,7 @@ def create_consignment(client, database, url, email, password, tenant_id, tenant
                     missing_fields_response = check_mandatory_fields(consignment_details, client)
                     if "All mandatory fields are present" in missing_fields_response:
                         consignment = json_from_user_input_consignment(consignment_details, client)
-                        validate, validated_consignment = validate_fields(consignment, client, database, tenant_id)
+                        validate, validated_consignment = validate_consignment_fields(consignment, client, database, tenant_id)
                         if validate == "Yes":
                             if 'consignments' not in st.session_state:
                                 st.session_state.consignments = []
