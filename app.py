@@ -8,7 +8,7 @@ import requests
 import time
 import pandas as pd
 
-def get_completion(prompt, client_instance, model="gpt-4-0125-preview"):
+def get_completion(prompt, client_instance, model="gpt-4o"):
     messages = [{"role": "user", "content": prompt}]
     response = client_instance.chat.completions.create(
     model=model,
@@ -18,7 +18,7 @@ def get_completion(prompt, client_instance, model="gpt-4-0125-preview"):
     )
     return response.choices[0].message.content
 
-def get_completion_json(prompt, client_instance, model="gpt-4-0125-preview"):
+def get_completion_json(prompt, client_instance, model="gpt-4o"):
     messages = [{"role": "user", "content": prompt}]
     response = client_instance.chat.completions.create(
     model=model,
