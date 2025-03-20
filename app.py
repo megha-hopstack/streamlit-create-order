@@ -555,7 +555,7 @@ def validate_consignment_fields(consignment, client, database, tenant_id):
     
     # Validate form factor
     if not consignment["Form Factor"] == '':
-        form_factor = validate_form_factor(customer_id, consignment["Product SKU"], database, tenant_id, consignment["Form Factor"])
+        form_factor = validate_form_factor_consignment(customer_id, consignment["Product SKU"], database, tenant_id, consignment["Form Factor"])
         if form_factor == "Form factor not valid":
             return form_factor, None
         validated_consignment["Form Factor"] = form_factor
