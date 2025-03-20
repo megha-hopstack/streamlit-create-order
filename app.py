@@ -7,6 +7,7 @@ from bson import ObjectId
 import requests
 import time
 import pandas as pd
+import validators
 
 def get_completion(prompt, client_instance, model="gpt-4o"):
     messages = [{"role": "user", "content": prompt}]
